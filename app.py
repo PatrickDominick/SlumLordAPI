@@ -17,6 +17,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String, nullable=False, unique=True)
     password = db.Column(db.String, nullable=False)
+    existing_game = db.Column(db.Boolean, nullable=False)
     money = db.Column(db.Float, nullable=False)
     # Avatar, high score, anything else?
     tokens = db.relationship("Token", backref="user", cascade="all, delete, delete-orphan")
@@ -25,6 +26,7 @@ class User(db.Model):
     def __init__(self, username, password, money=0):
         self.username = username
         self.password = password
+        self.existing_game = False
         self.money = money
 
 class Token(db.Model):
@@ -45,7 +47,7 @@ multiple_token_schema = TokenSchema(many=True)
 
 class UserSchema(ma.Schema):
     class Meta: 
-        fields = ("id", "username", "password", "money", "tokens") #Usually do not put password in but studying incription tomorrow
+        fields = ("id", "username", "password", "existing_game", "money", "tokens") #Usually do not put password in but studying incription tomorrow
     tokens = ma.Nested(multiple_token_schema) #makes it so tokens can be jsonified because it is an object. Now it can be read
 
 user_schema = UserSchema()
@@ -70,16 +72,6 @@ def add_user():
 
     return jsonify(user_schema.dump(new_record))
 
-@app.route("/user/get", methods=["GET"])
-def get_all_users():
-    all_users = db.session.query(User).all()
-    return jsonify(multiple_user_schema.dump(all_users))
-
-@app.route("/user/get/<username>", methods=["GET"])
-def get_user(username):
-    user = db.session.query(User).filter(User.username == username).first()
-    return jsonify(user_schema.dump(user))
-
 @app.route("/user/verification", methods=["POST"])
 def verification():
     if request.content_type != "application/json":
@@ -97,8 +89,35 @@ def verification():
     if not bcrypt.check_password_hash(user.password, password): 
         return jsonify("User NOT Verified")
 
-    return jsonify("User Verified")
+    return jsonify(user_schema.dump(user))
 
+@app.route("/user/get", methods=["GET"])
+def get_all_users():
+    all_users = db.session.query(User).all()
+    return jsonify(multiple_user_schema.dump(all_users))
+
+@app.route("/user/get/<username>", methods=["GET"])
+def get_user(username):
+    user = db.session.query(User).filter(User.username == username).first()
+    return jsonify(user_schema.dump(user))
+
+@app.route("/user/update/<id>", methods=["PUT"])
+def update_user(id):
+    if request.content_type != "application/json":
+        return jsonify("Error, Data must be sent as JSON FOOL!!!")
+
+    put_data = request.get_json()
+    existing_game = put_data.get("existing_game")
+    money = put_data.get("money")
+    # money = request.json.get("money") could be this because we're only getting it once
+
+    user = db.session.query(User).filter(User.id == id).first()
+
+    user.existing_game = existing_game
+    user.money = money
+    db.session.commit()
+
+    return jsonify(user_schema.dump(user))
 
 @app.route("/token/add", methods=["POST"])
 def add_token():
@@ -114,7 +133,9 @@ def add_token():
     db.session.add(new_record)
     db.session.commit()
 
-    return jsonify(token_schema.dump(new_record))
+    user = db.session.query(User).filter(User.id == user_id).first()
+
+    return jsonify(token_schema.dump(user))
 
 @app.route("/token/get", methods=["GET"])
 def get_all_tokens():
@@ -126,7 +147,14 @@ def get_token(id):
     token = db.session.query(Token).filter(Token.id == id).first()
     return jsonify(token_schema.dump(token))
 
-
+@app.route("/token/delete/<user_id>", methods=["DELETE"])
+def delete_tokens(user_id):
+    tokens = db.session.query(Token).filter(Token.user_id == user_id).all()
+    for token in tokens:
+        db.session.delete(token)
+        db.session.commit()
+    user = db.session.query(User).filter(User.id == user_id).first()
+    return jsonify(user_schema.dump(user))
 
 
 if __name__ == "__main__":
