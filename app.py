@@ -117,6 +117,8 @@ def update_user(id):
     user.money = money
     db.session.commit()
 
+    print (money, "money")
+
     return jsonify(user_schema.dump(user))
 
 @app.route("/token/add", methods=["POST"])
@@ -135,7 +137,7 @@ def add_token():
 
     user = db.session.query(User).filter(User.id == user_id).first()
 
-    return jsonify(token_schema.dump(user))
+    return jsonify(user_schema.dump(user))
 
 @app.route("/token/get", methods=["GET"])
 def get_all_tokens():
